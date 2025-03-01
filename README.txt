@@ -2,9 +2,10 @@
 Về chống trộm : Đã hoàn thành quét BLE lấy thông tin RSSI từ module BLE.
 Về phát hiện buồn ngủ : Chưa hoàn thành
 Dự kiến đã hoàn thành 60% tiến trình project vào 01/03/2025
+Cách tính từ RSSI sang Mét: https://iotandelectronics.wordpress.com/2016/10/07/how-to-calculate-distance-from-the-rssi-value-of-the-ble-beacon/
+Các giá trị liên quan đến chức năng phát hiện va chạm:
 Accel: x=144 y=866 z=551
 Đây là các giá trị thô (raw readings) từ cảm biến gia tốc (accelerometer) của các trục X, Y, Z.
-
 Mag=523.94
 Đây là giá trị độ lớn (magnitude) của vector gia tốc được tính toán từ hiệu số so với baseline của mỗi trục ( dùng công thức sqrt((x-baselineX)² + (y-baselineY)² + (z-baselineZ)²)).
 
