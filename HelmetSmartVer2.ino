@@ -13,50 +13,51 @@
 #define zPin 33             
 #define SIM_RX_PIN 16       
 #define SIM_TX_PIN 17       
-#define IR_SENSOR_PIN 36    // Chân kết nối cảm biến hồng ngoại (ADC1_CH0)
+#define IR_SENSOR_PIN 36    
 
 // BLE Configuration
-int scanTime = 5; 
+int scanTime = 2; 
 BLEScan *pBLEScan;
 BLEAddress targetAddress("19:ce:a9:93:71:4e");
+bool bleAlertActive = false; // Thêm biến debounce BLE
 
 // Impact Detection Variables
 int xaxis, yaxis, zaxis;
 int deltx, delty, deltz;
-int vibration = 2, devibrate = 10;
 int magnitude = 0;
-int sensitivity = 150;      
+int piezoValue = 0;
+float compositeValue = 0; 
+const int compositeThreshold = 1000; 
 bool impact_detected = false;
 unsigned long impact_time;
 const unsigned long alert_delay = 5000;
 
-// Piezoelectric Sensor
-int piezoThreshold = 500;   
-
 // IR Sensor Variables
-const int irThreshold = 2000; // Ngưỡng giá trị ADC để phát hiện mắt nhắm (cần điều chỉnh)
-bool eyeClosed = false;          // Trạng thái mắt (nhắm/mở)
-unsigned long eyeClosedTime = 0; // Thời gian mắt nhắm
-const unsigned long sleepThreshold = 3000; // Ngưỡng thời gian buồn ngủ (3 giây)
+int irThreshold = 2000; 
+bool eyeClosed = false;
+unsigned long eyeClosedTime = 0;
+const unsigned long sleepThreshold = 3000;
 
 // SIM 4G A7680C Configuration
 HardwareSerial SIM7680(1);
 String number1 = "0xxxxxxxxx";
 
+// Non-blocking delay variables
+unsigned long previousMillis = 0;
+const long scanInterval = 5000; 
+
 // BLE Callback
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice advertisedDevice) {
-        Serial.printf("Found BLE device: %s\n", advertisedDevice.toString().c_str());
-        if (advertisedDevice.haveServiceUUID()) {
-            BLEUUID uuid = advertisedDevice.getServiceUUID();
-            Serial.printf("Service UUID: %s\n", uuid.toString().c_str());
-        }
         if (advertisedDevice.getAddress().equals(targetAddress)) {
             int rssi = advertisedDevice.getRSSI();
-            Serial.printf("Found target device: %s, RSSI: %d\n", 
-                          advertisedDevice.getAddress().toString().c_str(), 
-                          rssi);
-            digitalWrite(BUZZER_PIN, rssi < -51 ? HIGH : LOW);
+            if (rssi < -51 && !bleAlertActive) {
+                digitalWrite(BUZZER_PIN, HIGH);
+                bleAlertActive = true;
+            } else if (rssi >= -51 && bleAlertActive) {
+                digitalWrite(BUZZER_PIN, LOW);
+                bleAlertActive = false;
+            }
         }
     }
 };
@@ -70,12 +71,14 @@ void setup() {
     pinMode(xPin, INPUT);
     pinMode(yPin, INPUT);
     pinMode(zPin, INPUT);
-    pinMode(IR_SENSOR_PIN, INPUT); // Cảm biến hồng ngoại là INPUT (ADC)
+    pinMode(IR_SENSOR_PIN, INPUT);
     
-    BLEDevice::init("");
+    BLEDevice::init("HelmetSmart");
     pBLEScan = BLEDevice::getScan();
     pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
     pBLEScan->setActiveScan(true);
+    pBLEScan->setInterval(100);
+    pBLEScan->setWindow(99);
     
     xaxis = analogRead(xPin);
     yaxis = analogRead(yPin);
@@ -84,36 +87,33 @@ void setup() {
 }
 
 void loop() {
-    scanBLE();
-    checkPiezoVibration();
-    detectCollision();
-    checkEyeState(); // Kiểm tra trạng thái mắt
+    unsigned long currentMillis = millis();
+    
+    // Quét BLE mỗi 5 giây không chặn loop
+    if (currentMillis - previousMillis >= scanInterval) {
+        previousMillis = currentMillis;
+        scanBLE();
+    }
+    
+    detectImpact();
+    checkEyeState();
+    
     if (impact_detected && millis() - impact_time >= alert_delay) {
         sendAlert();
     }
-    delay(2000);
 }
 
 void scanBLE() {
-    pBLEScan->start(scanTime, false);
+    BLEScanResults* results = pBLEScan->start(scanTime, false);
     Serial.println("BLE scan done!");
     pBLEScan->clearResults();
+    delete results;
 }
 
-void checkPiezoVibration() {
-    int piezoValue = analogRead(PIEZO_PIN);
-    if (piezoValue > piezoThreshold) {
-        Serial.println("Piezo vibration detected!");
-        digitalWrite(BUZZER_PIN, HIGH);
-        delay(1000);
-        digitalWrite(BUZZER_PIN, LOW);
-    }
-}
-
-void detectCollision() {
+void detectImpact() {
     static unsigned long lastCheck = 0;
-    if (micros() - lastCheck < 2000) return;
-    lastCheck = micros();
+    if (millis() - lastCheck < 10) return;
+    lastCheck = millis();
     
     int oldx = xaxis, oldy = yaxis, oldz = zaxis;
     xaxis = analogRead(xPin);
@@ -125,7 +125,12 @@ void detectCollision() {
     deltz = zaxis - oldz;
     magnitude = sqrt(sq(deltx) + sq(delty) + sq(deltz));
     
-    if (magnitude >= sensitivity) {
+    piezoValue = analogRead(PIEZO_PIN);
+    
+    // Chuẩn hóa giá trị (giả sử cảm biến có range tương đồng)
+    compositeValue = 0.7 * magnitude + 0.3 * piezoValue;
+    
+    if (compositeValue >= compositeThreshold && !impact_detected) {
         impact_detected = true;
         impact_time = millis();
         digitalWrite(BUZZER_PIN, HIGH);
@@ -133,41 +138,57 @@ void detectCollision() {
 }
 
 void checkEyeState() {
-    int irValue = analogRead(IR_SENSOR_PIN); // Đọc giá trị ADC từ cảm biến hồng ngoại
-    Serial.print("IR Sensor Value: ");
-    Serial.println(irValue); // In giá trị ADC ra Serial Monitor để xác định ngưỡng
-
-    bool currentEyeState = irValue > irThreshold; // Giá trị cao hơn ngưỡng => mắt nhắm
+    static unsigned long lastIRCheck = 0;
+    if (millis() - lastIRCheck < 100) return; // Kiểm tra mỗi 100ms
+    lastIRCheck = millis();
+    
+    int irValue = analogRead(IR_SENSOR_PIN);
+    bool currentEyeState = irValue > irThreshold;
     
     if (currentEyeState) {
         if (!eyeClosed) {
-            eyeClosedTime = millis(); // Bắt đầu đếm thời gian mắt nhắm
+            eyeClosedTime = millis();
             eyeClosed = true;
         } else if (millis() - eyeClosedTime >= sleepThreshold) {
-            // Mắt nhắm quá lâu, kích hoạt buzzer liên tục
-            Serial.println("Drowsiness detected! Buzzer activated.");
-            digitalWrite(BUZZER_PIN, HIGH); // Buzzer kêu liên tục
+            digitalWrite(BUZZER_PIN, HIGH);
         }
     } else {
-        if (eyeClosed) {
-            // Mắt mở lại, tắt buzzer
-            Serial.println("Eye opened. Buzzer deactivated.");
-            digitalWrite(BUZZER_PIN, LOW);
-            eyeClosed = false; // Reset trạng thái
-        }
+        digitalWrite(BUZZER_PIN, LOW);
+        eyeClosed = false;
     }
 }
 
+bool waitForResponse(const char* target, unsigned long timeout) {
+    unsigned long start = millis();
+    String response;
+    while (millis() - start < timeout) {
+        while (SIM7680.available()) {
+            char c = SIM7680.read();
+            response += c;
+            if (response.indexOf(target) != -1) return true;
+        }
+        delay(10); // Giảm CPU usage
+    }
+    return false;
+}
+
 void sendAlert() {
-    digitalWrite(BUZZER_PIN, LOW);
+    bool sendSuccess = false;
     SIM7680.println("AT+CMGF=1");
-    delay(500);
-    SIM7680.println("AT+CMGS=\"" + number1 + "\"");
-    delay(500);
-    SIM7680.print("NGUOI BI VA CHAM KHI THAM GIA GIAO THONG");
-    delay(500);
-    SIM7680.write(26);
-    delay(500);
-    Serial.println("SMS sent!");
-    impact_detected = false;
+    if (waitForResponse("OK", 1000)) {
+        SIM7680.print("AT+CMGS=\"");
+        SIM7680.print(number1);
+        SIM7680.println("\"");
+        if (waitForResponse(">", 1000)) {
+            SIM7680.print("NGUOI BI VA CHAM KHI THAM GIA GIAO THONG");
+            SIM7680.write(26);
+            if (waitForResponse("+CMGS:", 5000)) {
+                Serial.println("SMS sent!");
+                sendSuccess = true;
+            }
+        }
+    }
+    
+    impact_detected = !sendSuccess; // Chỉ reset nếu gửi thành công
+    digitalWrite(BUZZER_PIN, LOW);
 }
