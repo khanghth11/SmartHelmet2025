@@ -2,7 +2,7 @@
 Về chức năng chống trộm : 
 + Hoàn Thành: Đã thành công quét và lấy được các địa chỉ và tính toán khoảng cách từ nguồn phát đến hệ thống cách bao nhiêu mét dựa vào RSSI.
 *Code sử dụng thư viện BLE của ESP32 để quét các BLE. Trong callback, in ra địa chỉ và RSSI của từng thiết bị.
-*Sau đó tính khoảng cách dựa vào công thức từ "https://iotandelectronics.wordpress.com/2016/10/07/how-to-calculate-distance-from-the-rssi-value-of-the-ble-beacon/" distance = calculateDistance(rssi, -59, 2.5); // Giả sử txPower (hiệu chuẩn ở 1m) = -59, suy hao môi trường n = 2.5
+*Sau đó tính khoảng cách dựa vào công thức từ iotbymukund, 2016/10/07, How to Calculate Distance from the RSSI value of the BLE Beacon; distance = calculateDistance(rssi, -59, 2.5); // Giả sử txPower (hiệu chuẩn ở 1m) = -59, suy hao môi trường n = 2.5
 *Nếu thiết bị quét được khớp với targetAddress, hệ thống kiểm tra mức tín hiệu để kích hoạt trạng thái cảnh báo BLE.
 + Chưa hoàn thành: Hiệu chỉnh sai số thực tế (TxPower và hệ số suy hao n cần được đo đạc, hiệu chuẩn trong môi trường cụ thể).
 **Đánh giá tiến độ: 80/100%
@@ -34,7 +34,7 @@ Về tính năng phát hiện va chạm và kêu gọi trợ giúp:
 **************************************************
 Dự kiến đã hoàn thành 60% tiến trình project vào 01/03/2025
 
-
+https://iotandelectronics.wordpress.com/2016/10/07/how-to-calculate-distance-from-the-rssi-value-of-the-ble-beacon/
 **************************************************
 Sơ đồ Kết nối phần cứng:
 Module SIM 4G A7680C:
