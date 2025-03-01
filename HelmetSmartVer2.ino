@@ -13,6 +13,7 @@
 #define zPin 33             
 #define SIM_RX_PIN 16       
 #define SIM_TX_PIN 17       
+#define IR_SENSOR_PIN 36    // Chân kết nối cảm biến hồng ngoại (ADC1_CH0)
 
 // BLE Configuration
 int scanTime = 5; 
@@ -31,6 +32,12 @@ const unsigned long alert_delay = 5000;
 
 // Piezoelectric Sensor
 int piezoThreshold = 500;   
+
+// IR Sensor Variables
+const int irThreshold = 2000; // Ngưỡng giá trị ADC để phát hiện mắt nhắm (cần điều chỉnh)
+bool eyeClosed = false;          // Trạng thái mắt (nhắm/mở)
+unsigned long eyeClosedTime = 0; // Thời gian mắt nhắm
+const unsigned long sleepThreshold = 3000; // Ngưỡng thời gian buồn ngủ (3 giây)
 
 // SIM 4G A7680C Configuration
 HardwareSerial SIM7680(1);
@@ -63,6 +70,7 @@ void setup() {
     pinMode(xPin, INPUT);
     pinMode(yPin, INPUT);
     pinMode(zPin, INPUT);
+    pinMode(IR_SENSOR_PIN, INPUT); // Cảm biến hồng ngoại là INPUT (ADC)
     
     BLEDevice::init("");
     pBLEScan = BLEDevice::getScan();
@@ -79,6 +87,7 @@ void loop() {
     scanBLE();
     checkPiezoVibration();
     detectCollision();
+    checkEyeState(); // Kiểm tra trạng thái mắt
     if (impact_detected && millis() - impact_time >= alert_delay) {
         sendAlert();
     }
@@ -120,6 +129,32 @@ void detectCollision() {
         impact_detected = true;
         impact_time = millis();
         digitalWrite(BUZZER_PIN, HIGH);
+    }
+}
+
+void checkEyeState() {
+    int irValue = analogRead(IR_SENSOR_PIN); // Đọc giá trị ADC từ cảm biến hồng ngoại
+    Serial.print("IR Sensor Value: ");
+    Serial.println(irValue); // In giá trị ADC ra Serial Monitor để xác định ngưỡng
+
+    bool currentEyeState = irValue > irThreshold; // Giá trị cao hơn ngưỡng => mắt nhắm
+    
+    if (currentEyeState) {
+        if (!eyeClosed) {
+            eyeClosedTime = millis(); // Bắt đầu đếm thời gian mắt nhắm
+            eyeClosed = true;
+        } else if (millis() - eyeClosedTime >= sleepThreshold) {
+            // Mắt nhắm quá lâu, kích hoạt buzzer liên tục
+            Serial.println("Drowsiness detected! Buzzer activated.");
+            digitalWrite(BUZZER_PIN, HIGH); // Buzzer kêu liên tục
+        }
+    } else {
+        if (eyeClosed) {
+            // Mắt mở lại, tắt buzzer
+            Serial.println("Eye opened. Buzzer deactivated.");
+            digitalWrite(BUZZER_PIN, LOW);
+            eyeClosed = false; // Reset trạng thái
+        }
     }
 }
 
