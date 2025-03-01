@@ -2,64 +2,65 @@
 #include <BLEUtils.h>
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
-#include <SoftwareSerial.h>
+#include <HardwareSerial.h>
 
-// Cấu hình chân GPIO cho buzzer
-#define BUZZER_PIN 23
+// Cấu hình chân GPIO
+#define BUZZER_PIN 23       // Chân kết nối buzzer
+#define PIEZO_PIN 34        // Chân kết nối cảm biến rung piezoelectric
+#define xPin 35             // Chân kết nối cảm biến gia tốc (trục X)
+#define yPin 32             // Chân kết nối cảm biến gia tốc (trục Y)
+#define zPin 33             // Chân kết nối cảm biến gia tốc (trục Z)
+#define SIM_RX_PIN 16       // Chân RX của ESP32 kết nối với TX của module A7680C
+#define SIM_TX_PIN 17       // Chân TX của ESP32 kết nối với RX của module A7680C
 
-// Cấu hình chân GPIO cho cảm biến va chạm
-#define xPin 34
-#define yPin 35
-#define zPin 32
-
-// Cấu hình chân GPIO cho cảm biến cồn
-#define CB_Con 33
-
-// Cấu hình chân GPIO cho module SIM 4G A7680C
-#define SIM_TX_PIN 16
-#define SIM_RX_PIN 17
-
-int scanTime = 5;  // Thời gian quét (giây)
+// Cấu hình BLE
+int scanTime = 5;           // Thời gian quét BLE (giây)
 BLEScan *pBLEScan;
+BLEAddress targetAddress("19:ce:a9:93:71:4e");  // Địa chỉ BLE mục tiêu
 
-// Địa chỉ BLE của thiết bị bạn muốn tìm
-BLEAddress targetAddress("19:ce:a9:93:71:4e");  // Thay thế bằng địa chỉ BLE thực tế
-
-// Khai báo biến cho cảm biến va chạm
+// Cấu hình cảm biến va chạm
 int xaxis = 0, yaxis = 0, zaxis = 0;
 int deltx = 0, delty = 0, deltz = 0;
 int vibration = 2, devibrate = 10;
 int magnitude = 0;
-int sensitivity = 150;  // Cài đặt ngưỡng phát hiện cảnh báo va chạm
-
+int sensitivity = 150;      // Ngưỡng phát hiện va chạm
 boolean impact_detected = false;
 unsigned long time1;
 unsigned long impact_time;
-unsigned long alert_delay = 5000;  // Thời gian gửi báo va chạm
+unsigned long alert_delay = 5000;  // Thời gian gửi cảnh báo sau va chạm
 
-// Khai báo biến cho cảm biến cồn
-float GT_cbcon;
-float GT_nongdocon;
+// Cấu hình cảm biến rung piezoelectric
+int piezoThreshold = 500;   // Ngưỡng phát hiện rung
 
-// Khai báo biến cho module SIM 4G A7680C
-SoftwareSerial SIM800L(SIM_TX_PIN, SIM_RX_PIN);
+// Cấu hình module SIM 4G A7680C
+HardwareSerial SIM7680(1);  // Sử dụng UART1 của ESP32
 String number1 = "0912595637";  // Số điện thoại nhận cảnh báo
 
+// Callback cho quét BLE
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) {
-    // Kiểm tra xem thiết bị quét được có địa chỉ trùng với địa chỉ mục tiêu không
+    // In thông tin về thiết bị BLE
+    Serial.printf("Found BLE device: %s\n", advertisedDevice.toString().c_str());
+
+    // Lấy UUID của thiết bị
+    if (advertisedDevice.haveServiceUUID()) {
+      BLEUUID uuid = advertisedDevice.getServiceUUID();
+      Serial.printf("Service UUID: %s\n", uuid.toString().c_str());
+    }
+
+    // Kiểm tra thiết bị mục tiêu
     if (advertisedDevice.getAddress().equals(targetAddress)) {
       int rssi = advertisedDevice.getRSSI();
       Serial.printf("Found target device: %s, RSSI: %d\n", 
                     advertisedDevice.getAddress().toString().c_str(), 
                     rssi);
 
-      // Kiểm tra RSSI và kích hoạt buzzer nếu RSSI < -48
+      // Kiểm tra RSSI và kích hoạt buzzer
       if (rssi < -51) {
         digitalWrite(BUZZER_PIN, HIGH);  // Bật buzzer
         Serial.println("Buzzer ON");
       } else {
-        digitalWrite(BUZZER_PIN, LOW);  // Tắt buzzer
+        digitalWrite(BUZZER_PIN, LOW);   // Tắt buzzer
         Serial.println("Buzzer OFF");
       }
     }
@@ -68,53 +69,54 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
 
 void setup() {
   Serial.begin(115200);
-  SIM800L.begin(9600);
-  Serial.println("Scanning for target BLE device...");
+  SIM7680.begin(115200, SERIAL_8N1, SIM_RX_PIN, SIM_TX_PIN);  // Khởi tạo UART1 cho module A7680C
 
-  // Cấu hình chân buzzer là OUTPUT
+  // Cấu hình chân GPIO
   pinMode(BUZZER_PIN, OUTPUT);
-  digitalWrite(BUZZER_PIN, LOW);  // Đảm bảo buzzer tắt lúc khởi động
-
-  // Cấu hình chân cảm biến va chạm
+  pinMode(PIEZO_PIN, INPUT);
   pinMode(xPin, INPUT);
   pinMode(yPin, INPUT);
   pinMode(zPin, INPUT);
 
-  // Cấu hình chân cảm biến cồn
-  pinMode(CB_Con, INPUT);
-
+  // Khởi tạo BLE
   BLEDevice::init("");
-  pBLEScan = BLEDevice::getScan();  // Tạo một lần quét mới
+  pBLEScan = BLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  pBLEScan->setActiveScan(true);  // Quét chủ động (nhanh hơn nhưng tốn năng lượng hơn)
+  pBLEScan->setActiveScan(true);
   pBLEScan->setInterval(100);
-  pBLEScan->setWindow(99);  // Giá trị nhỏ hơn hoặc bằng setInterval
+  pBLEScan->setWindow(99);
 
+  // Khởi tạo cảm biến va chạm
   time1 = micros();
   xaxis = analogRead(xPin);
   yaxis = analogRead(yPin);
   zaxis = analogRead(zPin);
+
+  Serial.println("System initialized.");
 }
 
 void loop() {
-  // Bắt đầu quét và kiểm tra kết quả
+  // Quét BLE
   BLEScanResults *foundDevices = pBLEScan->start(scanTime, false);
-  Serial.println("Scan done!");
-  pBLEScan->clearResults();  // Xóa kết quả để giải phóng bộ nhớ
+  Serial.println("BLE scan done!");
+  pBLEScan->clearResults();
 
-  // Đọc giá trị cảm biến cồn
-  GT_cbcon = analogRead(CB_Con);
-  GT_nongdocon = (((GT_cbcon / 1000) - 0.04));
+  // Đọc giá trị cảm biến rung piezoelectric
+  int piezoValue = analogRead(PIEZO_PIN);
+  if (piezoValue > piezoThreshold) {
+    Serial.println("Piezo vibration detected!");
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(1000);
+    digitalWrite(BUZZER_PIN, LOW);
+  }
 
-  // Đọc cảm biến va chạm liên tục sau mỗi 2mS
+  // Phát hiện va chạm bằng cảm biến gia tốc
   if (micros() - time1 > 1999) Va_cham();
 
   if (impact_detected) {
     if (millis() - impact_time >= alert_delay) {
       digitalWrite(BUZZER_PIN, LOW);
-      call();
-      delay(1000);
-      message1();
+      sendSMS("NGUOI BI VA CHAM KHI THAM GIA GIAO THONG");
       impact_detected = false;
       impact_time = 0;
     }
@@ -123,11 +125,10 @@ void loop() {
   delay(2000);  // Đợi 2 giây trước khi quét lại
 }
 
+// Hàm phát hiện va chạm bằng cảm biến gia tốc
 void Va_cham() {
   time1 = micros();
-  int oldx = xaxis;
-  int oldy = yaxis;
-  int oldz = zaxis;
+  int oldx = xaxis, oldy = yaxis, oldz = zaxis;
 
   xaxis = analogRead(xPin);
   yaxis = analogRead(yPin);
@@ -154,22 +155,19 @@ void Va_cham() {
   }
 }
 
-void call() {
-  SIM800L.print(F("ATD"));
-  SIM800L.print(number1);
-  SIM800L.print(F(";\r\n"));
-  delay(15000);
-  SIM800L.println("ATH");
-}
+// Hàm gửi SMS
+void sendSMS(String message) {
+  SIM7680.println("AT+CMGF=1");  // Chế độ text mode
+  delay(500);
 
-void message1() {
-  SIM800L.println("AT+CMGF=1");
-  delay(1000);
-  SIM800L.println("AT+CMGS=\"" + number1 + "\"\r");
-  delay(1000);
-  String SMS = "NGUOI BI VA CHAM KHI THAM GIA GIAO THONG";
-  SIM800L.println(SMS);
-  delay(100);
-  SIM800L.println((char)26);
-  delay(1000);
+  SIM7680.println("AT+CMGS=\"" + number1 + "\"");  // Số điện thoại nhận SMS
+  delay(500);
+
+  SIM7680.print(message);  // Nội dung SMS
+  delay(500);
+
+  SIM7680.write(26);  // Gửi ký tự kết thúc (Ctrl+Z)
+  delay(500);
+
+  Serial.println("SMS sent: " + message);
 }
