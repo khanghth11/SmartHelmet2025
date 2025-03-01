@@ -4,6 +4,7 @@
 #include <BLEAdvertisedDevice.h>
 #include <HardwareSerial.h>
 #include <math.h>
+#include <string.h>
 
 // GPIO Configuration
 #define BUZZER_PIN    23       
@@ -38,20 +39,22 @@ const unsigned long sleepThreshold = 3000;
 
 // SIM 4G A7680C Configuration
 HardwareSerial SIM7680(1);
-String number1 = "0xxxxxxxxx";
+const char number1[] = "0xxxxxxxxx";
 enum SimState { SIM_IDLE, SIM_CMGF, SIM_CMGS, SIM_SEND };
 SimState simState = SIM_IDLE;
 unsigned long simTimeout = 0;
 int retryCount = 0;
-String simResponse;
+char simResponse[256];       // Buffer cho phản hồi từ SIM
+int simResponseIndex = 0;    // Vị trí index hiện tại
 
 // System Variables
 unsigned long lastScanMillis = 0;
 const long scanInterval = 5000;
 int baselineX, baselineY, baselineZ;
 
+// Hàm prototype đã được cập nhật: dùng const char* thay vì String
 void calibrateSensors();
-bool checkResponse(const String& target);
+bool checkResponse(const char* target);
 void updateSMSSending();
 void updateBuzzer();
 void readSIMResponse();
@@ -103,7 +106,6 @@ void loop() {
     lastScanMillis = currentMillis;
     BLEScanResults* results = pBLEScan->start(scanTime, false);
     pBLEScan->clearResults();
-    delete results;
   }
   
   detectImpact();
@@ -118,7 +120,7 @@ void loop() {
 
 // Hàm hiệu chỉnh cảm biến: tính baseline và composite threshold
 void calibrateSensors() {
-  const int samples = 100;
+  const int samples = 50;
   long sumX = 0, sumY = 0, sumZ = 0;
   
   for (int i = 0; i < samples; i++) {
@@ -239,18 +241,30 @@ void checkEyeState() {
   }
 }
 
-// Đọc phản hồi từ module SIM
+// Đọc phản hồi từ module SIM sử dụng buffer tĩnh
 void readSIMResponse() {
-  while (SIM7680.available()) {
+  while (SIM7680.available() && simResponseIndex < 255) {
     char c = SIM7680.read();
-    simResponse += c;
+    // Xử lý kết thúc dòng
+    if (c == '\r' || c == '\n') {
+      if (simResponseIndex > 0) { // Nếu có dữ liệu
+        simResponse[simResponseIndex] = '\0'; // Kết thúc chuỗi
+        Serial.print("SIM Response: ");
+        Serial.println(simResponse);
+        simResponseIndex = 0; // Reset buffer sau khi xử lý
+      }
+    } else {
+      simResponse[simResponseIndex++] = c;
+    }
   }
 }
 
 // Kiểm tra phản hồi từ SIM có chứa chuỗi target không
-bool checkResponse(const String& target) {
-  if (simResponse.indexOf(target) != -1) {
-    simResponse = "";
+bool checkResponse(const char* target) {
+  if (strstr(simResponse, target) != NULL) {
+    // Reset buffer sau khi tìm thấy phản hồi
+    simResponseIndex = 0;
+    simResponse[0] = '\0';
     return true;
   }
   return false;
