@@ -34,7 +34,7 @@ int piezoThreshold = 500;   // Ngưỡng phát hiện rung
 
 // Cấu hình module SIM 4G A7680C
 HardwareSerial SIM7680(1);  // Sử dụng UART1 của ESP32
-String number1 = "0912595637";  // Số điện thoại nhận cảnh báo
+String number1 = "0xxxxxxxxx";  // Số điện thoại nhận cảnh báo
 
 // Callback cho quét BLE
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
