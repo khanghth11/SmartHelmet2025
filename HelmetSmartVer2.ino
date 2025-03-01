@@ -61,14 +61,26 @@ void readSIMResponse();
 void checkEyeState();
 void detectImpact();
 
+
+float calculateDistance(int rssi, int txPower, float n) {
+  return pow(10, ((float)(txPower - rssi)) / (10 * n));
+}
 // BLE Callback
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) {
+  int rssi = advertisedDevice.getRSSI();
+  float distance = calculateDistance(rssi, -59, 2.5); // Giả sử txPower = -59, n = 2.5
+  Serial.print("Device ");
+  Serial.print(advertisedDevice.getAddress().toString().c_str());
+  Serial.print(" RSSI: ");
+  Serial.print(rssi);
+  Serial.print(" | Estimated Distance: ");
+  Serial.print(distance);
+  Serial.println(" m");
+    
+    // Nếu cần, vẫn có thể xử lý riêng cho targetAddress:
     if (advertisedDevice.getAddress().equals(targetAddress)) {
-      int rssi = advertisedDevice.getRSSI();
-      bleAlertActive = (rssi < -51);
-      Serial.print("BLE target found, RSSI: ");
-      Serial.println(rssi);
+      bleAlertActive = (advertisedDevice.getRSSI() < -51);
     }
   }
 };
