@@ -1,6 +1,19 @@
-Đề tài đã hoàn thành: Về Cảnh Báo Tai Nạn : Gửi sms (ModuleSim4G) cho số điện thoại khi phát hiện thấy tai nạn thông qua cảm biến rung và cảm biến gia tốc.
-Về chống trộm : Đã hoàn thành quét BLE lấy thông tin RSSI từ module BLE.
-Về phát hiện buồn ngủ : Chưa hoàn thành
+Đề tài đã hoàn thành: Về Cảnh Báo Tai Nạn :
+Về chức năng chống trộm :
++ Hoàn Thành:
++ Chưa Hoàn Thành
+Đánh giá tiến độ: xx/100%
+
+Về phát hiện buồn ngủ : 
++ Hoàn Thành:
++ Chưa Hoàn Thành
+Đánh giá tiến độ: xx/100%
+
+Về tính năng phát hiện va chạm và kêu gọi trợ giúp:
++ Hoàn Thành:
++ Chưa Hoàn Thành
+Đánh giá tiến độ: xx/100%
+
 Dự kiến đã hoàn thành 60% tiến trình project vào 01/03/2025
 Cách tính từ RSSI sang Mét: https://iotandelectronics.wordpress.com/2016/10/07/how-to-calculate-distance-from-the-rssi-value-of-the-ble-beacon/
 Các giá trị liên quan đến chức năng phát hiện va chạm:
