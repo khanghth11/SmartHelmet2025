@@ -111,8 +111,37 @@ void loop() {
 }
 
 void calibrateSensors() {
- bool checkResponse(const String& target, unsigned long timeout);
+const int samples = 100;
+    long sumX = 0, sumY = 0, sumZ = 0;
+    
+    for(int i = 0; i < samples; i++) {
+        sumX += analogRead(xPin);
+        sumY += analogRead(yPin);
+        sumZ += analogRead(zPin);
+        delay(10);
+    }
+    
+    baselineX = sumX / samples;
+    baselineY = sumY / samples;
+    baselineZ = sumZ / samples;
+    
+    // Calculate dynamic threshold
+    long sumMagnitude = 0;
+    long sumPiezo = 0;
+    for(int i = 0; i < samples; i++) {
+        int x = analogRead(xPin);
+        int y = analogRead(yPin);
+        int z = analogRead(zPin);
+        sumMagnitude += sqrt(sq(x - baselineX) + sq(y - baselineY) + sq(z - baselineZ));
+        sumPiezo += analogRead(PIEZO_PIN);
+        delay(10);
+    }
+    
+    float avgMagnitude = sumMagnitude / samples;
+    float avgPiezo = sumPiezo / samples;
+    compositeThreshold = (avgMagnitude * 0.7 + avgPiezo * 0.3) * 2.5;
 }
+
 
 void detectImpact() {
     static unsigned long lastCheck = 0;
@@ -233,3 +262,5 @@ void updateBuzzer() {
     
     digitalWrite(BUZZER_PIN, shouldBuzz ? HIGH : LOW);
 }
+
+Dự đoán xem thực tế code có thể hoạt động ổn định không. Thiết bị là nodemcu esp32 và cho tôi biết serial monitor sẽ xuất ra những giá trị gì và tôi cần hiệu chỉnh những thông số gì trong thực tế
