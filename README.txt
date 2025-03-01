@@ -1,3 +1,11 @@
+Đề tài đã hoàn thành: Về Cảnh Báo Tai Nạn : Gửi sms (ModuleSim4G) cho số điện thoại khi phát hiện thấy tai nạn thông qua cảm biến rung và cảm biến gia tốc.
+Về chống trộm : Đã hoàn thành quét BLE lấy thông tin RSSI từ module BLE.
+Về phát hiện buồn ngủ : Chưa hoàn thành
+Dự kiến đã hoàn thành 60% tiến trình project vào 01/03/2025
+
+
+
+
 Kết nối phần cứng:
 Module SIM 4G A7680C:
 
