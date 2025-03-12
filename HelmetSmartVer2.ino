@@ -5,13 +5,12 @@
 #include <HardwareSerial.h>
 #include <math.h>
 #include <string.h>
+#include <Wire.h>
+#include <MPU6050.h>
 
 // GPIO Configuration
 #define BUZZER_PIN    23       
 #define PIEZO_PIN     34        
-#define xPin          35             
-#define yPin          32             
-#define zPin          33             
 #define SIM_RX_PIN    16       
 #define SIM_TX_PIN    17       
 #define IR_SENSOR_PIN 36    
@@ -19,7 +18,7 @@
 // BLE Configuration
 int scanTime = 2; 
 BLEScan *pBLEScan;
-BLEAddress targetAddress("19:ce:a9:93:71:4e");
+BLEAddress targetAddress("dc:47:5d:13:b7:41");
 bool bleAlertActive = false;
 
 // Impact Detection Variables
@@ -39,7 +38,7 @@ const unsigned long sleepThreshold = 3000;
 
 // SIM 4G A7680C Configuration
 HardwareSerial SIM7680(1);
-const char number1[] = "0xxxxxxxxx";
+const char number1[] = "0xxxxxx";
 enum SimState { SIM_IDLE, SIM_CMGF, SIM_CMGS, SIM_SEND };
 SimState simState = SIM_IDLE;
 unsigned long simTimeout = 0;
@@ -47,12 +46,15 @@ int retryCount = 0;
 char simResponse[256];       // Buffer cho phản hồi từ SIM
 int simResponseIndex = 0;    // Vị trí index hiện tại
 
+// MPU6050 Configuration
+MPU6050 mpu;
+float baselineX, baselineY, baselineZ;
+
 // System Variables
 unsigned long lastScanMillis = 0;
 const long scanInterval = 5000;
-int baselineX, baselineY, baselineZ;
 
-// Hàm prototype đã được cập nhật: dùng const char* thay vì String
+// Hàm prototype
 void calibrateSensors();
 bool checkResponse(const char* target);
 void updateSMSSending();
@@ -61,23 +63,24 @@ void readSIMResponse();
 void checkEyeState();
 void detectImpact();
 
-
+// Hàm tính khoảng cách dựa trên RSSI
 float calculateDistance(int rssi, int txPower, float n) {
   return pow(10, ((float)(txPower - rssi)) / (10 * n));
 }
+
 // BLE Callback
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) {
-  int rssi = advertisedDevice.getRSSI();
-  float distance = calculateDistance(rssi, -59, 2.5); // Giả sử txPower = -59, n = 2.5
-  Serial.print("Device ");
-  Serial.print(advertisedDevice.getAddress().toString().c_str());
-  Serial.print(" RSSI: ");
-  Serial.print(rssi);
-  Serial.print(" | Estimated Distance: ");
-  Serial.print(distance);
-  Serial.println(" m");
-    
+    int rssi = advertisedDevice.getRSSI();
+    float distance = calculateDistance(rssi, -59, 2.5); // Giả sử txPower = -59, n = 2.5
+    Serial.print("Device ");
+    Serial.print(advertisedDevice.getAddress().toString().c_str());
+    Serial.print(" RSSI: ");
+    Serial.print(rssi);
+    Serial.print(" | Estimated Distance: ");
+    Serial.print(distance);
+    Serial.println(" m");
+
     // Nếu cần, vẫn có thể xử lý riêng cho targetAddress:
     if (advertisedDevice.getAddress().equals(targetAddress)) {
       bleAlertActive = (advertisedDevice.getRSSI() < -51);
@@ -91,11 +94,18 @@ void setup() {
   
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(PIEZO_PIN, INPUT);
-  pinMode(xPin, INPUT);
-  pinMode(yPin, INPUT);
-  pinMode(zPin, INPUT);
   pinMode(IR_SENSOR_PIN, INPUT);
   
+  // Khởi tạo MPU6050
+  Wire.begin();
+  mpu.initialize();
+  if (!mpu.testConnection()) {
+    Serial.println("MPU6050 connection failed");
+    while (1);
+  }
+  Serial.println("MPU6050 connection successful");
+
+  // Khởi tạo BLE
   BLEDevice::init("HelmetSmart");
   pBLEScan = BLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
@@ -133,12 +143,14 @@ void loop() {
 // Hàm hiệu chỉnh cảm biến: tính baseline và composite threshold
 void calibrateSensors() {
   const int samples = 50;
-  long sumX = 0, sumY = 0, sumZ = 0;
+  float sumX = 0, sumY = 0, sumZ = 0;
   
   for (int i = 0; i < samples; i++) {
-    sumX += analogRead(xPin);
-    sumY += analogRead(yPin);
-    sumZ += analogRead(zPin);
+    int16_t ax, ay, az;
+    mpu.getAcceleration(&ax, &ay, &az);
+    sumX += ax / 16384.0;
+    sumY += ay / 16384.0;
+    sumZ += az / 16384.0;
     delay(10);
   }
   
@@ -147,12 +159,14 @@ void calibrateSensors() {
   baselineZ = sumZ / samples;
   
   // Tính ngưỡng động
-  long sumMagnitude = 0;
+  float sumMagnitude = 0;
   long sumPiezo = 0;
   for (int i = 0; i < samples; i++) {
-    int x = analogRead(xPin);
-    int y = analogRead(yPin);
-    int z = analogRead(zPin);
+    int16_t ax, ay, az;
+    mpu.getAcceleration(&ax, &ay, &az);
+    float x = ax / 16384.0;
+    float y = ay / 16384.0;
+    float z = az / 16384.0;
     sumMagnitude += sqrt(sq(x - baselineX) + sq(y - baselineY) + sq(z - baselineZ));
     sumPiezo += analogRead(PIEZO_PIN);
     delay(10);
@@ -178,21 +192,27 @@ void detectImpact() {
   if (millis() - lastCheck < 10) return;
   lastCheck = millis();
 
-  int x = analogRead(xPin);
-  int y = analogRead(yPin);
-  int z = analogRead(zPin);
-  
+  // Đọc dữ liệu gia tốc từ MPU6050
+  int16_t ax, ay, az;
+  mpu.getAcceleration(&ax, &ay, &az);
+  float x = ax / 16384.0;
+  float y = ay / 16384.0;
+  float z = az / 16384.0;
+
+  // Tính độ lớn của vector gia tốc
   float magnitude = sqrt(sq(x - baselineX) + sq(y - baselineY) + sq(z - baselineZ));
+
+  // Đọc giá trị từ cảm biến piezo
   int piezoValue = analogRead(PIEZO_PIN);
-  
+
   // Lọc EMA
   emaMagnitude = alpha * magnitude + (1 - alpha) * emaMagnitude;
   emaPiezo = alpha * piezoValue + (1 - alpha) * emaPiezo;
-  
+
   float compositeValue = 0.7 * emaMagnitude + 0.3 * emaPiezo;
-  
+
   // In ra các giá trị cảm biến mỗi 1 giây
-  if (millis() - lastDebugPrint >= 1000) {
+  if (millis() - lastDebugPrint >= 300) {
     lastDebugPrint = millis();
     Serial.print("Accel: x=");
     Serial.print(x);
@@ -209,7 +229,7 @@ void detectImpact() {
     Serial.print(" | Thresh=");
     Serial.println(compositeThreshold);
   }
-  
+
   if (compositeValue >= compositeThreshold && !impact_detected) {
     impact_detected = true;
     impact_time = millis();
