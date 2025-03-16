@@ -22,9 +22,6 @@ BLEAddress targetAddress("dc:47:5d:13:b7:41");
 bool bleAlertActive = false;
 
 // Impact Detection Variables
-float emaMagnitude = 0;
-float emaPiezo = 0;
-const float alpha = 0.1;
 int compositeThreshold;
 bool impact_detected = false;
 unsigned long impact_time;
@@ -38,7 +35,7 @@ const unsigned long sleepThreshold = 3000;
 
 // SIM 4G A7680C Configuration
 HardwareSerial SIM7680(1);
-const char number1[] = "0xxxxxx";
+const char number1[] = "+84359084446";
 enum SimState { SIM_IDLE, SIM_CMGF, SIM_CMGS, SIM_SEND };
 SimState simState = SIM_IDLE;
 unsigned long simTimeout = 0;
@@ -80,10 +77,8 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
     Serial.print(" | Estimated Distance: ");
     Serial.print(distance);
     Serial.println(" m");
-
-    // Nếu cần, vẫn có thể xử lý riêng cho targetAddress:
     if (advertisedDevice.getAddress().equals(targetAddress)) {
-      bleAlertActive = (advertisedDevice.getRSSI() < -51);
+      bleAlertActive = (advertisedDevice.getRSSI() < -70);
     }
   }
 };
@@ -138,6 +133,9 @@ void loop() {
   }
   
   updateBuzzer();
+
+  // In trạng thái hệ thống mỗi 100ms
+  printStatus();
 }
 
 // Hàm hiệu chỉnh cảm biến: tính baseline và composite threshold
@@ -188,14 +186,13 @@ void calibrateSensors() {
 // Phát hiện va chạm: đọc cảm biến gia tốc, piezo và tính composite value
 void detectImpact() {
   static unsigned long lastCheck = 0;
-  static unsigned long lastDebugPrint = 0;
-  if (millis() - lastCheck < 10) return;
+  if (millis() - lastCheck < 1000) return; // Kiểm tra mỗi 1 giây
   lastCheck = millis();
 
   // Đọc dữ liệu gia tốc từ MPU6050
   int16_t ax, ay, az;
   mpu.getAcceleration(&ax, &ay, &az);
-  float x = ax / 16384.0;
+  float x = ax / 16384.0; // Chuyển đổi sang đơn vị g
   float y = ay / 16384.0;
   float z = az / 16384.0;
 
@@ -205,37 +202,37 @@ void detectImpact() {
   // Đọc giá trị từ cảm biến piezo
   int piezoValue = analogRead(PIEZO_PIN);
 
-  // Lọc EMA
-  emaMagnitude = alpha * magnitude + (1 - alpha) * emaMagnitude;
-  emaPiezo = alpha * piezoValue + (1 - alpha) * emaPiezo;
+  // Tính giá trị tổng hợp
+  float compositeValue = 0.7 * magnitude + 0.3 * piezoValue;
 
-  float compositeValue = 0.7 * emaMagnitude + 0.3 * emaPiezo;
+  // In ra các giá trị để debug
+  Serial.println("===== DEBUG VALUES =====");
+  Serial.print("Accel (g): x=");
+  Serial.print(x);
+  Serial.print(" y=");
+  Serial.print(y);
+  Serial.print(" z=");
+  Serial.print(z);
+  Serial.print(" | Magnitude: ");
+  Serial.print(magnitude);
+  Serial.print(" | Piezo: ");
+  Serial.print(piezoValue);
+  Serial.print(" | Composite: ");
+  Serial.print(compositeValue);
+  Serial.print(" | Threshold: ");
+  Serial.println(compositeThreshold);
+  Serial.println("========================");
 
-  // In ra các giá trị cảm biến mỗi 1 giây
-  if (millis() - lastDebugPrint >= 300) {
-    lastDebugPrint = millis();
-    Serial.print("Accel: x=");
-    Serial.print(x);
-    Serial.print(" y=");
-    Serial.print(y);
-    Serial.print(" z=");
-    Serial.print(z);
-    Serial.print(" | Mag=");
-    Serial.print(magnitude);
-    Serial.print(" | Piezo=");
-    Serial.print(piezoValue);
-    Serial.print(" | Composite=");
-    Serial.print(compositeValue);
-    Serial.print(" | Thresh=");
-    Serial.println(compositeThreshold);
-  }
-
+  // Kiểm tra ngưỡng va chạm
   if (compositeValue >= compositeThreshold && !impact_detected) {
     impact_detected = true;
     impact_time = millis();
     simState = SIM_IDLE;
     retryCount = 0;
-    Serial.println("Impact detected!");
+    Serial.println("Phat Hien Tai Nan!");
+  } else if (compositeValue < compositeThreshold && impact_detected) {
+    impact_detected = false; // Đặt lại trạng thái khi không còn va chạm
+    Serial.println("Khong Phat Hien Tai Nan!");
   }
 }
 
@@ -322,7 +319,7 @@ void updateSMSSending() {
         simTimeout = millis();
       } else if (millis() - simTimeout > 1000) {
         if (++retryCount >= 3) {
-          impact_detected = false;
+          impact_detected = false; // Đặt lại trạng thái nếu thất bại
           Serial.println("Error: Failed to set SMS format");
         } else {
           simState = SIM_IDLE;
@@ -340,7 +337,7 @@ void updateSMSSending() {
         simTimeout = millis();
       } else if (millis() - simTimeout > 1000) {
         if (++retryCount >= 3) {
-          impact_detected = false;
+          impact_detected = false; // Đặt lại trạng thái nếu thất bại
           Serial.println("Error: Failed to prepare SMS");
         } else {
           simState = SIM_IDLE;
@@ -352,11 +349,11 @@ void updateSMSSending() {
     case SIM_SEND:
       if (checkResponse("+CMGS:")) {
         Serial.println("SIM_SEND: SMS sent successfully.");
-        impact_detected = false;
+        impact_detected = false; // Đặt lại trạng thái sau khi gửi SMS thành công
         simState = SIM_IDLE;
       } else if (millis() - simTimeout > 5000) {
         if (++retryCount >= 3) {
-          impact_detected = false;
+          impact_detected = false; // Đặt lại trạng thái nếu thất bại
           Serial.println("Error: Failed to send SMS");
         } else {
           simState = SIM_IDLE;
@@ -387,4 +384,55 @@ void updateBuzzer() {
   }
   
   digitalWrite(BUZZER_PIN, shouldBuzz ? HIGH : LOW);
+}
+
+void printStatus() {
+  static unsigned long lastPrintTime = 0;
+  unsigned long currentMillis = millis();
+
+  // Kiểm tra nếu đã đủ 100ms kể từ lần in trước
+  if (currentMillis - lastPrintTime >= 100) {
+    lastPrintTime = currentMillis;
+
+    // In trạng thái va chạm
+    if (impact_detected) {
+      Serial.println("Status: Impact detected!");
+    } else {
+      Serial.println("Status: Stable");
+    }
+
+    // In trạng thái BLE
+    if (bleAlertActive) {
+      Serial.println("BLE Alert: Active");
+    } else {
+      Serial.println("BLE Alert: Inactive");
+    }
+
+    // In trạng thái cảm biến IR (mắt đóng/mở)
+    if (eyeClosed) {
+      Serial.println("Eye State: Closed");
+    } else {
+      Serial.println("Eye State: Open");
+    }
+
+    // In giá trị cảm biến gia tốc và piezo
+    int16_t ax, ay, az;
+    mpu.getAcceleration(&ax, &ay, &az);
+    float x = ax / 16384.0;
+    float y = ay / 16384.0;
+    float z = az / 16384.0;
+    float magnitude = sqrt(sq(x - baselineX) + sq(y - baselineY) + sq(z - baselineZ));
+    int piezoValue = analogRead(PIEZO_PIN);
+
+    Serial.print("Accel: x=");
+    Serial.print(x);
+    Serial.print(" y=");
+    Serial.print(y);
+    Serial.print(" z=");
+    Serial.print(z);
+    Serial.print(" | Mag=");
+    Serial.print(magnitude);
+    Serial.print(" | Piezo=");
+    Serial.println(piezoValue);
+  }
 }
