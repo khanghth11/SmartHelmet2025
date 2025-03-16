@@ -48,9 +48,7 @@ Chân tín hiệu: Kết nối với GPIO 34 (PIEZO_PIN).
 GND: Nối với GND của ESP32.
 ****************************************
 Cảm biến gia tốc:
-Chân X: Kết nối với GPIO 35 (xPin).
-Chân Y: Kết nối với GPIO 32 (yPin).
-Chân Z: Kết nối với GPIO 33 (zPin).
+
 ****************************************
 Buzzer:
 Chân điều khiển: Kết nối với GPIO 23 (BUZZER_PIN).
