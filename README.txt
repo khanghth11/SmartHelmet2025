@@ -31,6 +31,10 @@ Về tính năng phát hiện va chạm và kêu gọi trợ giúp:
 *Giao tiếp và hiệu chỉnh gửi SMS qua module SIM (thời gian timeout, số lần retry, phản hồi từ SIM) và cần hiệu chỉnh thêm các giá trị gia tốc, bộ lọc EMA trong điều kiện thực tế.
 Đánh giá tiến độ: 60/100%
 
+Cần thêm một nút nhấn vào hệ thống để thực hiện ba chức năng:
+*Tắt/Bật chế độ chống trộm: Ấn giữ 5 giây để tắt, buzzer kêu 1 tiếng; ấn giữ 5 giây để bật lại, buzzer kêu 2 tiếng khối block chống trộm.
+*Tắt buzzer khi buzzer đang kích hoạt: Ấn giữ 3 giây khi buzzer đang kêu để tắt buzzer.
+
 **************************************************
 Dự kiến đã hoàn thành 60% tiến trình project vào 01/03/2025
 
