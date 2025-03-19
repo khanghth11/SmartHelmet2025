@@ -119,7 +119,7 @@ void loop() {
   }
   detectImpact();
   checkEyeState();
-  if (impact_detected && antiTheftEnabled) {
+  if (impact_detected) {
     updateSMSSending();
   }
   updateBuzzer();
