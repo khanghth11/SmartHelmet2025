@@ -49,14 +49,11 @@ int simResponseIndex = 0;
 
 // MPU6050 Configuration
 MPU6050 mpu;
-float baselineX, baselineY, baselineZ;
-
 // System Variables
 unsigned long lastScanMillis = 0;
 const long scanInterval = 5000;
 
 // Hàm prototype
-void calibrateSensors();
 bool checkResponse(const char* target);
 void updateSMSSending();
 void updateBuzzer();
@@ -109,8 +106,6 @@ void setup() {
   pBLEScan->setActiveScan(true);
   pBLEScan->setInterval(100);
   pBLEScan->setWindow(99);
-  
-  calibrateSensors();
   Serial.println("System initialized.");
 }
 
@@ -138,92 +133,8 @@ void loop() {
   }
 }
 
-void printSensorValues() {
-  // Đọc giá trị từ cảm biến IR
-  int irValue = analogRead(IR_SENSOR_PIN);
-  Serial.print("IR Sensor Value: ");
-  Serial.println(irValue);
 
-  // Đọc giá trị từ cảm biến rung (Piezo)
-  int piezoValue = analogRead(PIEZO_PIN);
-  Serial.print("Piezo Sensor Value: ");
-  Serial.println(piezoValue);
 
-  // Đọc giá trị gia tốc từ MPU6050
-  int16_t ax, ay, az;
-  mpu.getAcceleration(&ax, &ay, &az);
-  float x = ax / 16384.0;
-  float y = ay / 16384.0;
-  float z = az / 16384.0;
-  Serial.print("MPU6050 Acceleration (X, Y, Z): ");
-  Serial.print(x);
-  Serial.print(", ");
-  Serial.print(y);
-  Serial.print(", ");
-  Serial.println(z);
-
-  // In trạng thái mắt (đóng/mở)
-  Serial.print("Eye State: ");
-  Serial.println(eyeClosed ? "Closed" : "Open");
-
-  // In trạng thái va chạm
-  Serial.print("Impact Detected: ");
-  Serial.println(impact_detected ? "Yes" : "No");
-
-  // In trạng thái BLE Alert
-  Serial.print("BLE Alert Active: ");
-  Serial.println(bleAlertActive ? "Yes" : "No");
-
-  // In trạng thái chế độ chống trộm
-  Serial.print("Anti-Theft Mode: ");
-  Serial.println(antiTheftEnabled ? "Enabled" : "Disabled");
-
-  // In trạng thái buzzer
-  Serial.print("Buzzer State: ");
-  Serial.println(digitalRead(BUZZER_PIN) == HIGH ? "ON" : "OFF");
-
-  Serial.println("-----------------------------");
-}
-
-void calibrateSensors() {
-  const int samples = 100;
-  float sumX = 0, sumY = 0, sumZ = 0;
-  
-  for (int i = 0; i < samples; i++) {
-    int16_t ax, ay, az;
-    mpu.getAcceleration(&ax, &ay, &az);
-    sumX += ax / 16384.0;
-    sumY += ay / 16384.0;
-    sumZ += az / 16384.0;
-    delay(10);
-  }
-  
-  baselineX = sumX / samples;
-  baselineY = sumY / samples;
-  baselineZ = sumZ / samples;
-  
-  float sumMagnitude = 0;
-  long sumPiezo = 0;
-  for (int i = 0; i < samples; i++) {
-    int16_t ax, ay, az;
-    mpu.getAcceleration(&ax, &ay, &az);
-    float x = ax / 16384.0;
-    float y = ay / 16384.0;
-    float z = az / 16384.0;
-    sumMagnitude += sqrt(sq(x - baselineX) + sq(y - baselineY) + sq(z - baselineZ));
-    sumPiezo += analogRead(PIEZO_PIN);
-    delay(10);
-  }
-  
-  float avgMagnitude = sumMagnitude / samples;
-  float avgPiezo = sumPiezo / samples;
-  compositeThreshold = (avgMagnitude * 0.7 + avgPiezo * 0.3) * 4.0;
-  if (compositeThreshold < 0.5) {
-    compositeThreshold = 0.5;  // Đảm bảo ngưỡng không quá thấp
-  }
-  Serial.print("Calibration done. Threshold: ");
-  Serial.println(compositeThreshold);
-}
 
 void handleButton() {
   static bool buzzerState = false;
@@ -263,15 +174,17 @@ void handleButton() {
   }
 }
 
+
+
 #define MAX_MAGNITUDE 2.5  // Ngưỡng gia tốc (tùy chỉnh theo thực tế)
-#define MAX_VIBRATION 800  // Ngưỡng cảm biến rung
+#define MAX_VIBRATION 300  // Ngưỡng cảm biến rung
 
 void detectImpact() {
     static unsigned long lastCheck = 0;
     static int maxVibration = 0;
     static unsigned long lastResetTime = 0;
 
-    if (millis() - lastCheck < 200) return;
+    if (millis() - lastCheck < 50) return;
     lastCheck = millis();
 
     // Đọc giá trị gia tốc từ MPU6050
@@ -281,29 +194,26 @@ void detectImpact() {
     float y = ay / 16384.0;
     float z = az / 16384.0;
 
-    float magnitude = sqrt(sq(x - baselineX) + sq(y - baselineY) + sq(z - baselineZ));
-    
+    float magnitude = sqrt(sq(x) + sq(y) + sq(z));
+
     // Đọc giá trị từ cảm biến rung
     int piezoValue = analogRead(PIEZO_PIN);
-    
-    // Cập nhật giá trị lớn nhất trong khoảng thời gian 10 giây
+
+    // Cập nhật giá trị lớn nhất trong khoảng thời gian 5 giây
     if (piezoValue > maxVibration) {
         maxVibration = piezoValue;
-    }
-
-    // Nếu vượt ngưỡng gia tốc, kiểm tra tiếp cảm biến rung
-    if (magnitude > MAX_MAGNITUDE) {
-        if (maxVibration > MAX_VIBRATION) {
-            impact_detected = true;
-            impact_time = millis();
-            Serial.println("Impact detected!");
-        }
     }
 
     // Reset giá trị cảm biến rung mỗi 5 giây
     if (millis() - lastResetTime > 5000) {
         maxVibration = 0;
         lastResetTime = millis();
+    }
+
+    // Phát hiện va chạm khi magnitude hvà maxVibration vượt ngưỡng
+    if (magnitude > MAX_MAGNITUDE && maxVibration > MAX_VIBRATION) {
+        impact_detected = true;
+        impact_time = millis();
     }
 
     // Reset lại trạng thái va chạm sau 5 giây
@@ -416,4 +326,77 @@ void updateBuzzer() {
     digitalWrite(BUZZER_PIN, LOW);
     buzzerStartTime = 0; // Đảm bảo tắt buzzer khi hệ thống vô hiệu hóa
   }
+}
+void printSensorValues() {
+  // Đọc giá trị từ cảm biến IR
+  int irValue = analogRead(IR_SENSOR_PIN);
+  Serial.print("IR Sensor Value: ");
+  Serial.println(irValue);
+
+  // Đọc giá trị từ cảm biến rung (Piezo)
+  int piezoValue = analogRead(PIEZO_PIN);
+  Serial.print("Piezo Sensor Value: ");
+  Serial.println(piezoValue);
+
+  // Đọc giá trị gia tốc từ MPU6050
+  int16_t ax, ay, az;
+  mpu.getAcceleration(&ax, &ay, &az);
+  float x = ax / 16384.0;
+  float y = ay / 16384.0;
+  float z = az / 16384.0;
+  float magnitude = sqrt(sq(x) + sq(y) + sq(z));
+
+  Serial.print("MPU6050 Acceleration (X, Y, Z): ");
+  Serial.print(x); Serial.print(", ");
+  Serial.print(y); Serial.print(", ");
+  Serial.println(z);
+  
+  Serial.print("Magnitude: ");
+  Serial.print(magnitude);
+  Serial.print(" | Threshold: ");
+  Serial.println(2.5);
+
+  // Xử lý giá trị rung cực đại trong 5 giây
+  static int maxVibration = 0;
+  static unsigned long lastResetTime = 0;
+  if (millis() - lastResetTime > 5000) {
+    maxVibration = piezoValue;  // Cập nhật lại từ giá trị mới nhất
+    lastResetTime = millis();
+  } else {
+    if (piezoValue > maxVibration) {
+      maxVibration = piezoValue;
+    }
+  }
+  Serial.print("Max Vibration in last 5s: ");
+  Serial.println(maxVibration);
+
+  // Xác định va chạm dựa trên gia tốc
+  impact_detected = (magnitude > MAX_MAGNITUDE && maxVibration > MAX_VIBRATION);
+
+  Serial.print("Impact Detected: ");
+  Serial.println(impact_detected ? "Yes" : "No");
+
+  // In trạng thái mắt
+  Serial.print("Eye State: ");
+  Serial.println(eyeClosed ? "Closed" : "Open");
+
+  // In trạng thái BLE Alert
+  Serial.print("BLE Alert Active: ");
+  Serial.println(bleAlertActive ? "Yes" : "No");
+
+  // In trạng thái chống trộm
+  Serial.print("Anti-Theft Mode: ");
+  Serial.println(antiTheftEnabled ? "Enabled" : "Disabled");
+
+  // Kiểm tra bật/tắt còi báo động
+  if (impact_detected || bleAlertActive) {
+    digitalWrite(BUZZER_PIN, HIGH);
+  } else {
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+
+  Serial.print("Buzzer State: ");
+  Serial.println(digitalRead(BUZZER_PIN) == HIGH ? "ON" : "OFF");
+
+  Serial.println("-----------------------------");
 }
