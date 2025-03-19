@@ -165,7 +165,7 @@ void calibrateSensors() {
   compositeThreshold = (avgMagnitude * 0.7 + avgPiezo * 0.3) * 4.0;
   if (compositeThreshold < 0.5) {
     compositeThreshold = 0.5;  // Đảm bảo ngưỡng không quá thấp
-}
+  }
   Serial.print("Calibration done. Threshold: ");
   Serial.println(compositeThreshold);
 }
