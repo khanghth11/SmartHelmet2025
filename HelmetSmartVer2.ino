@@ -19,7 +19,6 @@ unsigned long buttonPressTime = 0;  // Thời gian nhấn nút
 bool buttonActive = false;  // Trạng thái nút nhấn
 unsigned long buzzerStartTime = 0;  // Thời điểm buzzer bắt đầu kêu
 const unsigned long buzzerDuration = 5 * 60 * 1000;  // 5 phút (tính bằng mili giây)
-
 // BLE Configuration
 int scanTime = 2; 
 BLEScan *pBLEScan;
@@ -132,7 +131,7 @@ void loop() {
 }
 
 void calibrateSensors() {
-  const int samples = 50;
+  const int samples = 100;
   float sumX = 0, sumY = 0, sumZ = 0;
   
   for (int i = 0; i < samples; i++) {
@@ -163,7 +162,10 @@ void calibrateSensors() {
   
   float avgMagnitude = sumMagnitude / samples;
   float avgPiezo = sumPiezo / samples;
-  compositeThreshold = (avgMagnitude * 0.7 + avgPiezo * 0.3) * 2.5;
+  compositeThreshold = (avgMagnitude * 0.7 + avgPiezo * 0.3) * 4.0;
+  if (compositeThreshold < 0.5) {
+    compositeThreshold = 0.5;  // Đảm bảo ngưỡng không quá thấp
+}
   Serial.print("Calibration done. Threshold: ");
   Serial.println(compositeThreshold);
 }
@@ -206,41 +208,53 @@ void handleButton() {
   }
 }
 
+#define MAX_MAGNITUDE 2.5  // Ngưỡng gia tốc (tùy chỉnh theo thực tế)
+#define MAX_VIBRATION 800  // Ngưỡng cảm biến rung
+
 void detectImpact() {
-  static unsigned long lastCheck = 0;
-  static unsigned long lastDebugPrint = 0;
-  if (millis() - lastCheck < 10) return;
-  lastCheck = millis();
+    static unsigned long lastCheck = 0;
+    static int maxVibration = 0;
+    static unsigned long lastResetTime = 0;
 
-  int16_t ax, ay, az;
-  mpu.getAcceleration(&ax, &ay, &az);
-  float x = ax / 16384.0;
-  float y = ay / 16384.0;
-  float z = az / 16384.0;
+    if (millis() - lastCheck < 200) return;
+    lastCheck = millis();
 
-  float magnitude = sqrt(sq(x - baselineX) + sq(y - baselineY) + sq(z - baselineZ));
-  int piezoValue = analogRead(PIEZO_PIN);
-  float compositeValue = 0.7 * magnitude + 0.3 * piezoValue;
+    // Đọc giá trị gia tốc từ MPU6050
+    int16_t ax, ay, az;
+    mpu.getAcceleration(&ax, &ay, &az);
+    float x = ax / 16384.0;
+    float y = ay / 16384.0;
+    float z = az / 16384.0;
 
-  if (millis() - lastDebugPrint >= 300) {
-    lastDebugPrint = millis();
-    Serial.print("Mag: ");
-    Serial.print(magnitude);
-    Serial.print(" | Piezo: ");
-    Serial.print(piezoValue);
-    Serial.print(" | Composite: ");
-    Serial.print(compositeValue);
-    Serial.print(" | Thresh: ");
-    Serial.println(compositeThreshold);
-  }
+    float magnitude = sqrt(sq(x - baselineX) + sq(y - baselineY) + sq(z - baselineZ));
+    
+    // Đọc giá trị từ cảm biến rung
+    int piezoValue = analogRead(PIEZO_PIN);
+    
+    // Cập nhật giá trị lớn nhất trong khoảng thời gian 10 giây
+    if (piezoValue > maxVibration) {
+        maxVibration = piezoValue;
+    }
 
-  if (compositeValue >= compositeThreshold && !impact_detected) {
-    impact_detected = true;
-    impact_time = millis();
-    simState = SIM_IDLE;
-    retryCount = 0;
-    Serial.println("Impact detected!");
-  }
+    // Nếu vượt ngưỡng gia tốc, kiểm tra tiếp cảm biến rung
+    if (magnitude > MAX_MAGNITUDE) {
+        if (maxVibration > MAX_VIBRATION) {
+            impact_detected = true;
+            impact_time = millis();
+            Serial.println("Impact detected!");
+        }
+    }
+
+    // Reset giá trị cảm biến rung mỗi 5 giây
+    if (millis() - lastResetTime > 5000) {
+        maxVibration = 0;
+        lastResetTime = millis();
+    }
+
+    // Reset lại trạng thái va chạm sau 5 giây
+    if (impact_detected && millis() - impact_time > 5000) {
+        impact_detected = false;
+    }
 }
 
 void checkEyeState() {
@@ -318,24 +332,33 @@ void updateSMSSending() {
 
 // Cập nhật buzzer
 void updateBuzzer() {
+  bool anyAlertActive = bleAlertActive || impact_detected || eyeClosed;
+  
   if (antiTheftEnabled) {
-    if (bleAlertActive) {
+    // Bật buzzer nếu có bất kỳ cảnh báo nào
+    if (anyAlertActive) {
       if (buzzerStartTime == 0) {
-        buzzerStartTime = millis();  // Ghi lại thời điểm buzzer bắt đầu kêu
+        buzzerStartTime = millis(); // Bắt đầu đếm thời gian
       }
-      digitalWrite(BUZZER_PIN, HIGH);  // Bật buzzer
-    } else {
-      digitalWrite(BUZZER_PIN, LOW);  // Tắt buzzer nếu không có cảnh báo
+      digitalWrite(BUZZER_PIN, HIGH);
+      
+      // Tự động tắt sau 5 phút
+      if (millis() - buzzerStartTime >= buzzerDuration) {
+        digitalWrite(BUZZER_PIN, LOW);
+        buzzerStartTime = 0;
+        antiTheftEnabled = false;
+        bleAlertActive = false;
+        impact_detected = false;
+        eyeClosed = false;
+      }
+    } 
+    else {
+      digitalWrite(BUZZER_PIN, LOW);
+      buzzerStartTime = 0; // Reset timer khi không có cảnh báo
     }
-
-    // Tắt buzzer và hệ thống chống trộm sau 5 phút
-    if (buzzerStartTime != 0 && (millis() - buzzerStartTime >= buzzerDuration)) {
-      digitalWrite(BUZZER_PIN, LOW);  // Tắt buzzer
-      antiTheftEnabled = false;      // Tắt hệ thống chống trộm
-      buzzerStartTime = 0;           // Reset thời gian
-      Serial.println("Anti-theft system disabled after 5 minutes.");
-    }
-  } else {
-    digitalWrite(BUZZER_PIN, LOW);  // Đảm bảo buzzer tắt khi hệ thống chống trộm tắt
+  } 
+  else {
+    digitalWrite(BUZZER_PIN, LOW);
+    buzzerStartTime = 0; // Đảm bảo tắt buzzer khi hệ thống vô hiệu hóa
   }
 }
