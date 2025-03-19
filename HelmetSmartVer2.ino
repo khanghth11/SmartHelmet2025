@@ -63,6 +63,7 @@ void updateBuzzer();
 void readSIMResponse();
 void checkEyeState();
 void detectImpact();
+void printSensorValues(); // Hàm mới để in giá trị cảm biến
 
 float calculateDistance(int rssi, int txPower, float n) {
   return pow(10, ((float)(txPower - rssi)) / (10 * n));
@@ -128,6 +129,60 @@ void loop() {
   }
   updateBuzzer();
   handleButton();
+
+  // In giá trị cảm biến mỗi 500ms
+  static unsigned long lastPrintTime = 0;
+  if (currentMillis - lastPrintTime >= 500) {
+    lastPrintTime = currentMillis;
+    printSensorValues();
+  }
+}
+
+void printSensorValues() {
+  // Đọc giá trị từ cảm biến IR
+  int irValue = analogRead(IR_SENSOR_PIN);
+  Serial.print("IR Sensor Value: ");
+  Serial.println(irValue);
+
+  // Đọc giá trị từ cảm biến rung (Piezo)
+  int piezoValue = analogRead(PIEZO_PIN);
+  Serial.print("Piezo Sensor Value: ");
+  Serial.println(piezoValue);
+
+  // Đọc giá trị gia tốc từ MPU6050
+  int16_t ax, ay, az;
+  mpu.getAcceleration(&ax, &ay, &az);
+  float x = ax / 16384.0;
+  float y = ay / 16384.0;
+  float z = az / 16384.0;
+  Serial.print("MPU6050 Acceleration (X, Y, Z): ");
+  Serial.print(x);
+  Serial.print(", ");
+  Serial.print(y);
+  Serial.print(", ");
+  Serial.println(z);
+
+  // In trạng thái mắt (đóng/mở)
+  Serial.print("Eye State: ");
+  Serial.println(eyeClosed ? "Closed" : "Open");
+
+  // In trạng thái va chạm
+  Serial.print("Impact Detected: ");
+  Serial.println(impact_detected ? "Yes" : "No");
+
+  // In trạng thái BLE Alert
+  Serial.print("BLE Alert Active: ");
+  Serial.println(bleAlertActive ? "Yes" : "No");
+
+  // In trạng thái chế độ chống trộm
+  Serial.print("Anti-Theft Mode: ");
+  Serial.println(antiTheftEnabled ? "Enabled" : "Disabled");
+
+  // In trạng thái buzzer
+  Serial.print("Buzzer State: ");
+  Serial.println(digitalRead(BUZZER_PIN) == HIGH ? "ON" : "OFF");
+
+  Serial.println("-----------------------------");
 }
 
 void calibrateSensors() {
