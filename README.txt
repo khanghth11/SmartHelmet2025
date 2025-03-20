@@ -4,8 +4,7 @@ Về chức năng chống trộm :
 *Code sử dụng thư viện BLE của ESP32 để quét các BLE. Trong callback, in ra địa chỉ và RSSI của từng thiết bị.
 *Sau đó tính khoảng cách dựa vào công thức từ iotbymukund, 2016/10/07, How to Calculate Distance from the RSSI value of the BLE Beacon; distance = calculateDistance(rssi, -59, 2.5); // Giả sử txPower (hiệu chuẩn ở 1m) = -59, suy hao môi trường n = 2.5
 *Nếu thiết bị quét được khớp với targetAddress, hệ thống kiểm tra mức tín hiệu để kích hoạt trạng thái cảnh báo BLE.
-+ Chưa hoàn thành: Hiệu chỉnh sai số thực tế (TxPower và hệ số suy hao n cần được đo đạc, hiệu chuẩn trong môi trường cụ thể).
-**Đánh giá tiến độ: 80/100%
+**Đánh giá tiến độ: 100/100%
 
 **************************************************
 Về phát hiện buồn ngủ : 
@@ -14,22 +13,20 @@ Về phát hiện buồn ngủ :
 *Nếu giá trị IR vượt ngưỡng (irThreshold = 2000) – mặc dù giá trị đo được hiện tại trong code nhỏ (do hiệu chuẩn của cảm biến) – thì hệ thống cho rằng “mắt đang đóng”.
 *Khi cảm biến phát hiện giá trị cao, thời gian được ghi nhận (eyeClosedTime). Nếu mắt được che khuất liên tục vượt quá sleepThreshold (3000 ms), trạng thái "eyeClosed" được kích hoạt và kích hoạt cảnh báo (buzzer).
 + Chưa Hoàn Thành: Chưa hiệu chỉnh sai số thực tế, có thể phải áp dụng các thuật toán hoặc kết hợp sensor gia tốc nhằm đảm bảo hệ thống phát hiện buồn ngủ hợp lí hơn.
-Đánh giá tiến độ: 60/100%
+Đánh giá tiến độ: 80/100%
 
 **************************************************
 Về tính năng phát hiện va chạm và kêu gọi trợ giúp:
 + Hoàn Thành:
-*Tích hợp sensor gia tốc + piezo, có thuật toán lọc EMA và ngưỡng động.
+*Tích hợp sensor gia tốc + piezo.
 *Tự động gửi SMS qua 4G khi phát hiện va chạm.
 *Đọc giá trị từ accelerometer qua các chân xPin, yPin, zPin (các giá trị raw).
-*Tính độ lớn (magnitude) của vector gia tốc bằng công thức: sumMagnitude += sqrt(sq(x - baselineX) + sq(y - baselineY) + sq(z - baselineZ));
 *Đọc giá trị từ cảm biến piezo (vibration) qua chân PIEZO_PIN.
-*Tính giá trị Composite theo tỉ lệ 0.7 (gia tốc) và 0.3 (piezo).{compositeThreshold = (avgMagnitude * 0.7 + avgPiezo * 0.3) * 2.5;}
+*Gửi sms khi xử lí giá trị MPU6050 vượt quá một ngưỡng xác định,nếu vượt qua ngưỡng MPU6050 tiếp đó xét tiếp đến giá trị maxVibration được khởi tạo. Biến này sẽ lưu giá trị vibration cao nhất trong vòng 5 giây, sau 5 giây lại reset về 0. Nếu Maxvibration cũng vượt một ngưỡng xác định thì gửi sms.
 *Khi va chạm được phát hiện (impact_detected = true), state machine của module SIM 4G A7680C được kích hoạt.
 *Các trạng thái bao gồm SIM_IDLE, SIM_CMGF, SIM_CMGS, SIM_SEND, xử lý các lệnh AT để gửi SMS thông báo “NGUOI BI VA CHAM KHI THAM GIAO THONG”.
-+ Chưa Hoàn Thành:
-*Giao tiếp và hiệu chỉnh gửi SMS qua module SIM (thời gian timeout, số lần retry, phản hồi từ SIM) và cần hiệu chỉnh thêm các giá trị gia tốc, bộ lọc EMA trong điều kiện thực tế.
-Đánh giá tiến độ: 60/100%
++ Chưa Hoàn Thành: Hiệu chỉnh thông số thực tế sau khi gắn lên nón bảo hiểm.
+Đánh giá tiến độ: 90/100%
 
 Cần thêm một nút nhấn vào hệ thống để thực hiện ba chức năng:
 *Tắt/Bật chế độ chống trộm: Ấn giữ 5 giây để tắt, buzzer kêu 1 tiếng; ấn giữ 5 giây để bật lại, buzzer kêu 2 tiếng khối block chống trộm.
