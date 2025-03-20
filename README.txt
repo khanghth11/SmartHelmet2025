@@ -33,7 +33,7 @@ Cần thêm một nút nhấn vào hệ thống để thực hiện ba chức n�
 *Tắt buzzer khi buzzer đang kích hoạt: Ấn giữ 3 giây khi buzzer đang kêu để tắt buzzer.
 
 **************************************************
-Dự kiến đã hoàn thành 60% tiến trình project vào 01/03/2025
+Dự kiến đã hoàn thành 85% tiến trình project vào 20/03/2025
 
 https://iotandelectronics.wordpress.com/2016/10/07/how-to-calculate-distance-from-the-rssi-value-of-the-ble-beacon/
 **************************************************
