@@ -38,23 +38,37 @@ Dự kiến đã hoàn thành 85% tiến trình project vào 20/03/2025
 https://iotandelectronics.wordpress.com/2016/10/07/how-to-calculate-distance-from-the-rssi-value-of-the-ble-beacon/
 **************************************************
 Sơ đồ Kết nối phần cứng:
-Module SIM 4G A7680C:
-VCC: 3.7V – 4.2V.
-GND: Nối chung với GND của ESP32.
-TX: Kết nối với GPIO 16 (đầu RX của ESP32).
-RX: Kết nối với GPIO 17 (đầu TX của ESP32).
-****************************************
-Cảm biến rung Piezoelectric:
-Chân tín hiệu: Kết nối với GPIO 34 (PIEZO_PIN).
-GND: Nối với GND của ESP32.
-****************************************
-Cảm biến gia tốc:
+*ESP32:
+GND –TERMINAL GND
+Vin - TERMINAL VCC
 
-****************************************
-Buzzer:
-Chân điều khiển: Kết nối với GPIO 23 (BUZZER_PIN).
-****************************************
-Cảm biến hồng ngoại (IR):
-Chân tín hiệu: Kết nối với GPIO 36 (IR_SENSOR_PIN).
-****************************************
-Các chân VCC, 3v3, GND... sẽ được cấp nguồn từ mạch nguồn breadboard.
+*MPU6050:
+SCL – I2C SCL GPIO 22
+SDA – I2C SDA GPIO 21
+VCC – TERMINAL VCC
+GND – TERMINAL GND
+
+*MODULE SIM A7680C:
+TX – RX2 UART GPIO16
+RX – TX2 UART GPIO17
+VCC – TERMINAL VCC
+GND – TERMINAL GND
+
+*MODULE Cảm Biến Rung
+Analog Output - GPIO 34
+VCC – TERMINAL VCC
+GND – TERMINAL GND
+
+*MODULE IR Dò Line
+Analog Output - GPIO 36
+VCC – TERMINAL VCC
+GND – TERMINAL GND
+
+*Buzzer
+GND – TERMINAL GND
+Chân + - GPIO 23
+
+*Button
+GND – TERMINAL GND
+Chân còn lại - GPIO 25
+
