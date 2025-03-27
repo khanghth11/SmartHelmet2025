@@ -69,7 +69,7 @@ float calculateDistance(int rssi, int txPower, float n) {
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) {
     int rssi = advertisedDevice.getRSSI();
-    float distance = calculateDistance(rssi, -59, 2.5);
+    float distance = calculateDistance(rssi, -25, 2.5);
     Serial.print("Device ");
     Serial.print(advertisedDevice.getAddress().toString().c_str());
     Serial.print(" RSSI: ");
