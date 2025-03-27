@@ -69,7 +69,7 @@ float calculateDistance(int rssi, int txPower, float n) {
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) {
     int rssi = advertisedDevice.getRSSI();
-    float distance = calculateDistance(rssi, -25, 2.5);
+    float distance = calculateDistance(rssi, -59, 2.5);
     Serial.print("Device ");
     Serial.print(advertisedDevice.getAddress().toString().c_str());
     Serial.print(" RSSI: ");
@@ -342,10 +342,10 @@ void updateBuzzer() {
   bool anyAlertActive = bleAlertActive || impact_detected || eyeClosed;
   
   if (antiTheftEnabled) {
-    // Bật buzzer nếu có bất kỳ cảnh báo nào
+    // Bật buzzer nếu có cảnh báo và chế độ chống trộm đang hoạt động
     if (anyAlertActive) {
       if (buzzerStartTime == 0) {
-        buzzerStartTime = millis(); // Bắt đầu đếm thời gian
+        buzzerStartTime = millis();
       }
       digitalWrite(BUZZER_PIN, HIGH);
       
@@ -354,19 +354,20 @@ void updateBuzzer() {
         digitalWrite(BUZZER_PIN, LOW);
         buzzerStartTime = 0;
         antiTheftEnabled = false;
+        // Chỉ reset các cờ liên quan đến chống trộm
         bleAlertActive = false;
         impact_detected = false;
         eyeClosed = false;
       }
-    } 
-    else {
+    } else {
       digitalWrite(BUZZER_PIN, LOW);
-      buzzerStartTime = 0; // Reset timer khi không có cảnh báo
+      buzzerStartTime = 0;
     }
-  } 
-  else {
+  } else {
+    // Tắt buzzer và reset timer nếu chế độ chống trộm tắt
     digitalWrite(BUZZER_PIN, LOW);
-    buzzerStartTime = 0; // Đảm bảo tắt buzzer khi hệ thống vô hiệu hóa
+    buzzerStartTime = 0;
+    // Không reset các cờ cảnh báo ở đây để tránh ảnh hưởng đến logic khác
   }
 }
 void printSensorValues() {
@@ -430,15 +431,4 @@ void printSensorValues() {
   Serial.print("Anti-Theft Mode: ");
   Serial.println(antiTheftEnabled ? "Enabled" : "Disabled");
 
-  // Kiểm tra bật/tắt còi báo động
-  if (impact_detected || bleAlertActive) {
-    digitalWrite(BUZZER_PIN, HIGH);
-  } else {
-    digitalWrite(BUZZER_PIN, LOW);
-  }
-
-  Serial.print("Buzzer State: ");
-  Serial.println(digitalRead(BUZZER_PIN) == HIGH ? "ON" : "OFF");
-
-  Serial.println("-----------------------------");
 }
