@@ -339,36 +339,48 @@ void updateSMSSending() {
 }
 // Cập nhật buzzer
 void updateBuzzer() {
-  bool anyAlertActive = bleAlertActive || impact_detected || eyeClosed;
-  
-  if (antiTheftEnabled) {
-    // Bật buzzer nếu có cảnh báo và chế độ chống trộm đang hoạt động
+  bool anyAlertActive = bleAlertActive;
+
+  // Bật buzzer khi phát hiện va chạm hoặc buồn ngủ, bất kể chế độ chống trộm
+  if (impact_detected || eyeClosed) {
+    if (buzzerStartTime == 0) {
+      buzzerStartTime = millis();
+    }
+    digitalWrite(BUZZER_PIN, HIGH);
+
+    // Tự động tắt sau 5 phút
+    if (millis() - buzzerStartTime >= buzzerDuration) {
+      digitalWrite(BUZZER_PIN, LOW);
+      buzzerStartTime = 0;
+      impact_detected = false;  // Reset flag
+      eyeClosed = false;
+    }
+  }
+  // Điều khiển Buzzer khi bật chế độ chống trộm
+  else if (antiTheftEnabled) {
+    // Bật buzzer nếu có cảnh báo BLE
     if (anyAlertActive) {
       if (buzzerStartTime == 0) {
         buzzerStartTime = millis();
       }
       digitalWrite(BUZZER_PIN, HIGH);
-      
+
       // Tự động tắt sau 5 phút
       if (millis() - buzzerStartTime >= buzzerDuration) {
         digitalWrite(BUZZER_PIN, LOW);
         buzzerStartTime = 0;
-        antiTheftEnabled = false;
-        // Chỉ reset các cờ liên quan đến chống trộm
         bleAlertActive = false;
-        impact_detected = false;
-        eyeClosed = false;
+        antiTheftEnabled = false;
       }
     } else {
       digitalWrite(BUZZER_PIN, LOW);
       buzzerStartTime = 0;
     }
-  } else {
-    // Tắt buzzer và reset timer nếu chế độ chống trộm tắt
-    digitalWrite(BUZZER_PIN, LOW);
-    buzzerStartTime = 0;
-    // Không reset các cờ cảnh báo ở đây để tránh ảnh hưởng đến logic khác
   }
+   else {
+      digitalWrite(BUZZER_PIN, LOW);
+      buzzerStartTime = 0;
+    }
 }
 void printSensorValues() {
   // Đọc giá trị từ cảm biến IR
