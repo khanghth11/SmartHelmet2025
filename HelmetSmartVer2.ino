@@ -62,10 +62,6 @@ void checkEyeState();
 void detectImpact();
 void printSensorValues(); // Hàm mới để in giá trị cảm biến
 
-float calculateDistance(int rssi, int txPower, float n) {
-  return pow(10, ((float)(txPower - rssi)) / (10 * n));
-}
-
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
     void onResult(BLEAdvertisedDevice advertisedDevice) {
         // Chỉ xử lý thiết bị mục tiêu
