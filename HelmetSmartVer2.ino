@@ -24,7 +24,7 @@ int scanTime = 2;
 BLEScan *pBLEScan;
 BLEAddress targetAddress("dc:47:5d:13:b7:41");
 bool bleAlertActive = false;
-
+void printDebugInfo();
 // Impact Detection Variables
 int compositeThreshold;
 bool impact_detected = false;
@@ -32,10 +32,10 @@ unsigned long impact_time;
 const unsigned long alert_delay = 5000;
 
 // IR Sensor Variables
-int irThreshold = 2000; 
+int irThreshold = 2500; 
 bool eyeClosed = false;
 unsigned long eyeClosedTime = 0;
-const unsigned long sleepThreshold = 3000;
+const unsigned long sleepThreshold = 4000;
 
 // SIM 4G A7680C Configuration
 HardwareSerial SIM7680(2);
@@ -67,23 +67,39 @@ float calculateDistance(int rssi, int txPower, float n) {
 }
 
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
-  void onResult(BLEAdvertisedDevice advertisedDevice) {
-    int rssi = advertisedDevice.getRSSI();
-    float distance = calculateDistance(rssi, -30, 2.5);
-    Serial.print("Device ");
-    Serial.print(advertisedDevice.getAddress().toString().c_str());
-    Serial.print(" RSSI: ");
-    Serial.print(rssi);
-    Serial.print(" | Distance: ");
-    Serial.print(distance);
-    Serial.println(" m");
+    void onResult(BLEAdvertisedDevice advertisedDevice) {
+        // Chỉ xử lý thiết bị mục tiêu
+        if (advertisedDevice.getAddress().equals(targetAddress)) {
+            int rssi = advertisedDevice.getRSSI();
+            Serial.print("Target Device ");
+            Serial.print(advertisedDevice.getAddress().toString().c_str());
+            Serial.print(" RSSI: ");
+            Serial.println(rssi); // In RSSI để dễ theo dõi
 
-    if (advertisedDevice.getAddress().equals(targetAddress)) {
-      bleAlertActive = (advertisedDevice.getRSSI() < -51);
+            // <<<--- ĐIỀU CHỈNH NGƯỠNG RSSI Ở ĐÂY NẾU CẦN ---<<<
+            int rssiThreshold = -75; // Bắt đầu thử nghiệm với giá trị này (hoặc -80, -70 tùy môi trường)
+
+            if (rssi < rssiThreshold) { // Thiết bị ở xa (tín hiệu yếu hơn ngưỡng)
+                if (!bleAlertActive) { // Chỉ cập nhật và log nếu trạng thái thay đổi từ false -> true
+                    Serial.println("!!! BLE Alert: Target device OUT OF RANGE !!!");
+                    bleAlertActive = true; // Đặt thành TRUE khi ra xa
+                }
+            } else { // Thiết bị ở gần (tín hiệu mạnh hơn hoặc bằng ngưỡng)
+                if (bleAlertActive) { // Chỉ cập nhật và log nếu trạng thái thay đổi từ true -> false
+                    Serial.println("--- BLE Alert: Target device BACK IN RANGE ---");
+                    bleAlertActive = false; // Quan trọng: Đặt lại thành FALSE khi quay lại gần
+                }
+            }
+        }
+        // Optional: Log other devices if needed for debugging
+        // else {
+        //   Serial.print("Other Device ");
+        //   Serial.print(advertisedDevice.getAddress().toString().c_str());
+        //   Serial.print(" RSSI: ");
+        //   Serial.println(advertisedDevice.getRSSI());
+        // }
     }
-  }
 };
-
 void setup() {
   Serial.begin(115200);
   SIM7680.begin(115200, SERIAL_8N1, SIM_RX_PIN, SIM_TX_PIN);
@@ -119,27 +135,49 @@ const unsigned long SMS_COOLDOWN = 30000; // 30s
 void loop() {
   unsigned long currentMillis = millis();
   readSIMResponse();
-  if (currentMillis - lastScanMillis >= scanInterval && antiTheftEnabled) {
+
+  // BLE Scan (chỉ khi chống trộm bật)
+  if (antiTheftEnabled && (currentMillis - lastScanMillis >= scanInterval)) {
     lastScanMillis = currentMillis;
-    BLEScanResults* results = pBLEScan->start(scanTime, false);
+    Serial.println("Starting BLE Scan (Non-Blocking)..."); // Thêm log
+
+    // Xóa kết quả từ lần quét trước (nên làm trước khi bắt đầu)
     pBLEScan->clearResults();
-  }
+
+    // Bắt đầu quét không chặn, chạy trong 'scanTime' giây.
+    // Kết quả được xử lý trong callback onResult.
+    // Không cần lưu giá trị trả về khi dùng non-blocking kiểu này.
+    pBLEScan->start(scanTime, false); // false = không chặn
+
+    Serial.println("BLE Scan initiated."); // Log rằng lệnh quét đã được gọi
+
+  } // Kết thúc khối if quét BLE
+
   detectImpact();
   checkEyeState();
-   if (impact_detected) {
-   updateSMSSending();
-}
+
+  // Xử lý gửi SMS nếu có va chạm VÀ SIM đang rảnh
+  if (impact_detected && simState == SIM_IDLE) {
+     Serial.println("Impact detected & SIM IDLE, starting SMS sequence."); // Thêm log
+     updateSMSSending();
+  }
+  // Tiếp tục xử lý state machine của SIM nếu đang gửi
+  if (simState != SIM_IDLE) {
+     updateSMSSending();
+  }
+
   updateBuzzer();
   handleButton();
 
-  // In giá trị cảm biến mỗi 500ms
+  // --- PHẦN THÊM DEBUG ---
   static unsigned long lastPrintTime = 0;
-  if (currentMillis - lastPrintTime >= 500) {
+  const unsigned long printInterval = 1000; // In mỗi 1000ms = 1 giây
+  if (currentMillis - lastPrintTime >= printInterval) {
     lastPrintTime = currentMillis;
-    printSensorValues();
+    printDebugInfo(); // Gọi hàm in debug
   }
-}
-
+  // --- KẾT THÚC PHẦN DEBUG ---
+} // Kết thúc hàm loop()
 
 void handleButton() {
   static bool buzzerState = false;
@@ -382,65 +420,73 @@ void updateBuzzer() {
       buzzerStartTime = 0;
     }
 }
-void printSensorValues() {
-  // Đọc giá trị từ cảm biến IR
-  int irValue = analogRead(IR_SENSOR_PIN);
-  Serial.print("IR Sensor Value: ");
-  Serial.println(irValue);
+void printDebugInfo() {
+  unsigned long currentMillis = millis();
+  Serial.println("\n----- DEBUG INFO -----");
 
-  // Đọc giá trị từ cảm biến rung (Piezo)
-  int piezoValue = analogRead(PIEZO_PIN);
-  Serial.print("Piezo Sensor Value: ");
-  Serial.println(piezoValue);
+  // === Trạng thái hệ thống ===
+  Serial.print("Timestamp: "); Serial.println(currentMillis);
+  Serial.print("Anti-Theft Mode: "); Serial.println(antiTheftEnabled ? "ENABLED" : "DISABLED");
+  Serial.print("Button Active: "); Serial.println(buttonActive ? "YES" : "NO");
+  Serial.print("Button Press Time: "); Serial.println(buttonPressTime);
 
-  // Đọc giá trị gia tốc từ MPU6050
+  // === Trạng thái Buzzer ===
+  bool isBuzzerOn = digitalRead(BUZZER_PIN); // Đọc trạng thái thực tế của pin
+  Serial.print("Buzzer Pin State: "); Serial.println(isBuzzerOn ? "HIGH (ON)" : "LOW (OFF)");
+  Serial.print("Buzzer Start Time: "); Serial.println(buzzerStartTime);
+  if (isBuzzerOn && buzzerStartTime > 0) {
+      Serial.print("Buzzer Active Duration: ");
+      Serial.print((currentMillis - buzzerStartTime) / 1000);
+      Serial.println(" s");
+  }
+
+  // === Cảnh báo BLE ===
+  Serial.print("BLE Alert Active: "); Serial.println(bleAlertActive ? "YES" : "NO");
+  // Lưu ý: Giá trị RSSI cuối cùng của target chỉ được cập nhật trong callback.
+  // Để xem RSSI liên tục, bạn cần log trong callback hoặc lưu lại giá trị cuối cùng.
+
+  // === Cảnh báo Va chạm ===
+  Serial.print("Impact Detected Flag: "); Serial.println(impact_detected ? "YES" : "NO");
+  if (impact_detected) {
+    Serial.print("Impact Time: "); Serial.println(impact_time);
+    Serial.print("Time Since Impact: ");
+    Serial.print((currentMillis - impact_time) / 1000);
+    Serial.println(" s");
+  }
+  // Đọc giá trị cảm biến liên quan đến va chạm
   int16_t ax, ay, az;
   mpu.getAcceleration(&ax, &ay, &az);
   float x = ax / 16384.0;
   float y = ay / 16384.0;
   float z = az / 16384.0;
   float magnitude = sqrt(sq(x) + sq(y) + sq(z));
+  int piezoValue = analogRead(PIEZO_PIN);
+  Serial.print("MPU Magnitude: "); Serial.print(magnitude);
+  Serial.print(" (Threshold: "); Serial.print(MAX_MAGNITUDE); Serial.println(")");
+  Serial.print("Piezo Value: "); Serial.print(piezoValue);
+  // Bạn đang dùng maxVibration trong 5s, có thể in cả nó nếu muốn
+  // static int lastMaxVibration = 0; // Cần sửa lại logic detectImpact để lấy maxVibration ra đây
+  // Serial.print(" (Max Vibration in window: "); Serial.print(lastMaxVibration); Serial.print(")"); // Ví dụ
+  Serial.print(" (Threshold: "); Serial.print(MAX_VIBRATION); Serial.println(")");
 
-  Serial.print("MPU6050 Acceleration (X, Y, Z): ");
-  Serial.print(x); Serial.print(", ");
-  Serial.print(y); Serial.print(", ");
-  Serial.println(z);
-  
-  Serial.print("Magnitude: ");
-  Serial.print(magnitude);
-  Serial.print(" | Threshold: ");
-  Serial.println(2.5);
 
-  // Xử lý giá trị rung cực đại trong 5 giây
-  static int maxVibration = 0;
-  static unsigned long lastResetTime = 0;
-  if (millis() - lastResetTime > 5000) {
-    maxVibration = piezoValue;  // Cập nhật lại từ giá trị mới nhất
-    lastResetTime = millis();
-  } else {
-    if (piezoValue > maxVibration) {
-      maxVibration = piezoValue;
-    }
-  }
-  Serial.print("Max Vibration in last 5s: ");
-  Serial.println(maxVibration);
+  // === Cảnh báo Buồn ngủ (Mắt nhắm) ===
+  Serial.print("Eye Closed Flag: "); Serial.println(eyeClosed ? "YES" : "NO");
+  int irValue = analogRead(IR_SENSOR_PIN);
+  Serial.print("IR Sensor Value: "); Serial.print(irValue);
+  Serial.print(" (Threshold: "); Serial.print(irThreshold); Serial.println(")");
+   if (eyeClosedTime > 0) {
+       Serial.print("Eye Closed Start Time: "); Serial.println(eyeClosedTime);
+       Serial.print("Eye Closed Duration: ");
+       Serial.print(currentMillis - eyeClosedTime);
+       Serial.println(" ms");
+   } else {
+       // Serial.println("Eye is Open"); // Có thể thêm nếu muốn
+   }
 
-  // Xác định va chạm dựa trên gia tốc
-  impact_detected = (magnitude > MAX_MAGNITUDE && maxVibration > MAX_VIBRATION);
+  // === Trạng thái SIM ===
+  Serial.print("SIM State: "); Serial.println(simState); // (0=IDLE, 1=CMGF, 2=CMGS, 3=SEND)
+  Serial.print("SIM Retry Count: "); Serial.println(retryCount);
 
-  Serial.print("Impact Detected: ");
-  Serial.println(impact_detected ? "Yes" : "No");
-
-  // In trạng thái mắt
-  Serial.print("Eye State: ");
-  Serial.println(eyeClosed ? "Closed" : "Open");
-
-  // In trạng thái BLE Alert
-  Serial.print("BLE Alert Active: ");
-  Serial.println(bleAlertActive ? "Yes" : "No");
-
-  // In trạng thái chống trộm
-  Serial.print("Anti-Theft Mode: ");
-  Serial.println(antiTheftEnabled ? "Enabled" : "Disabled");
-
+  Serial.println("----------------------\n");
 }
